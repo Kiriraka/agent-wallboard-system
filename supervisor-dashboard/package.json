@@ -29,5 +29,9 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "compression": "^1.8.1",
+    "webpack-bundle-analyzer": "^4.10.2"
   }
 }
