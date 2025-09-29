@@ -56,16 +56,16 @@ function createWindow() {
   });
 
   // Load React app
-  const startUrl = isDev 
-    ? 'http://localhost:3000' 
+  const startUrl = isDev
+    ? 'http://localhost:3000'
     : `file://${path.join(__dirname, '../build/index.html')}`;
-  
+
   mainWindow.loadURL(startUrl);
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    
+
     if (isDev) {
       mainWindow.webContents.openDevTools();
     }
@@ -76,7 +76,7 @@ function createWindow() {
     if (!app.isQuiting) {
       event.preventDefault();
       mainWindow.hide();
-      
+
       // Show tray notification on first minimize
       if (tray && !tray.isDestroyed()) {
         new Notification({
@@ -96,18 +96,18 @@ function createWindow() {
 function createTray() {
   try {
     tray = new Tray(path.join(__dirname, 'public/assets/tray-icon.png'));
-    
+
     const contextMenu = Menu.buildFromTemplate([
-      { 
-        label: 'Show Agent Wallboard', 
+      {
+        label: 'Show Agent Wallboard',
         click: () => {
           mainWindow.show();
           mainWindow.focus();
         }
       },
       { type: 'separator' },
-      { 
-        label: 'About', 
+      {
+        label: 'About',
         click: () => {
           require('electron').dialog.showMessageBox(mainWindow, {
             type: 'info',
@@ -118,30 +118,30 @@ function createTray() {
         }
       },
       { type: 'separator' },
-      { 
-        label: 'Quit', 
+      {
+        label: 'Quit',
         click: () => {
           app.isQuiting = true;
           app.quit();
         }
       }
     ]);
-    
+
     tray.setContextMenu(contextMenu);
     tray.setToolTip('Agent Wallboard - Click to show');
-    
+
     // Double click to show
     tray.on('double-click', () => {
       mainWindow.show();
       mainWindow.focus();
     });
-    
+
     // Single click to show (Windows/Linux)
     tray.on('click', () => {
       mainWindow.show();
       mainWindow.focus();
     });
-    
+
   } catch (error) {
     console.error('Tray creation failed:', error);
   }
