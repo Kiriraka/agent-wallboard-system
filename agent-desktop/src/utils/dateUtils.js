@@ -1,5 +1,3 @@
-// Date and time utility functions
-
 export const formatTime = (timestamp) => {
   try {
     return new Date(timestamp).toLocaleTimeString('en-US', {
@@ -7,8 +5,7 @@ export const formatTime = (timestamp) => {
       minute: '2-digit',
       hour12: false
     });
-  } catch (error) {
-    console.error('Error formatting time:', error);
+  } catch {
     return '--:--';
   }
 };
@@ -23,9 +20,8 @@ export const formatDateTime = (timestamp) => {
       minute: '2-digit',
       hour12: false
     });
-  } catch (error) {
-    console.error('Error formatting datetime:', error);
-    return 'Invalid Date';
+  } catch {
+    return 'Invalid date';
   }
 };
 
@@ -56,41 +52,17 @@ export const getTimeAgo = (timestamp) => {
     
     const diffInWeeks = Math.floor(diffInDays / 7);
     return `${diffInWeeks}w ago`;
-    
-  } catch (error) {
-    console.error('Error calculating time ago:', error);
+  } catch {
     return 'unknown';
   }
 };
 
-export const isToday = (timestamp) => {
+export const getDuration = (start, end) => {
   try {
-    const date = new Date(timestamp);
-    const today = new Date();
-    
-    return date.toDateString() === today.toDateString();
-  } catch (error) {
-    return false;
-  }
-};
-
-export const formatRelativeTime = (timestamp) => {
-  try {
-    const date = new Date(timestamp);
-    
-    if (isToday(timestamp)) {
-      return `Today at ${formatTime(timestamp)}`;
-    }
-    
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    if (date.toDateString() === yesterday.toDateString()) {
-      return `Yesterday at ${formatTime(timestamp)}`;
-    }
-    
-    return formatDateTime(timestamp);
-  } catch (error) {
-    return formatDateTime(timestamp);
+    const startTime = new Date(start);
+    const endTime = new Date(end);
+    return Math.floor((endTime - startTime) / 1000);
+  } catch {
+    return 0;
   }
 };

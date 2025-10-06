@@ -1,38 +1,56 @@
+// Load environment variables first
+require('dotenv').config();
+
 const { app, BrowserWindow, Tray, Menu, ipcMain, Notification } = require('electron');
 const path = require('path');
-const isDev = process.env.NODE_ENV === 'development';
-require('dotenv').config();
+
+// Determine if in development mode
+const isDev = process.env.ELECTRON_IS_DEV === 'true' || 
+              process.env.NODE_ENV === 'development' ||
+              !app.isPackaged;
 
 let mainWindow;
 let tray;
 
+console.log('Starting Agent Wallboard Desktop App');
+console.log('Environment:', isDev ? 'DEVELOPMENT' : 'PRODUCTION');
+
 // IPC Handlers
 ipcMain.handle('show-notification', async (event, { title, body }) => {
   try {
-    const notification = new Notification({ title, body });
+    const notification = new Notification({ 
+      title, 
+      body,
+      icon: path.join(__dirname, 'public/assets/icon.png')
+    });
     notification.show();
+    console.log('✅ Electron notification shown:', title); // เพิ่มบรรทัดนี้
     return { success: true };
   } catch (error) {
-    console.error('Notification error:', error);
+    console.error('❌ Notification error:', error);
     return { success: false, error: error.message };
   }
-});
-
-ipcMain.handle('close-app', () => {
-  app.quit();
 });
 
 ipcMain.handle('minimize-to-tray', () => {
   if (mainWindow) {
     mainWindow.hide();
+    return { success: true };
   }
+  return { success: false };
 });
 
 ipcMain.handle('show-app', () => {
   if (mainWindow) {
     mainWindow.show();
     mainWindow.focus();
+    return { success: true };
   }
+  return { success: false };
+});
+
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
 });
 
 function createWindow() {
@@ -41,118 +59,124 @@ function createWindow() {
     height: 700,
     minWidth: 350,
     minHeight: 600,
+    maxWidth: 500,
     icon: path.join(__dirname, 'public/assets/icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      enableRemoteModule: false,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      devTools: isDev
     },
     show: false,
-    titleBarStyle: 'default',
     resizable: true,
     maximizable: false,
-    fullscreenable: false
+    frame: true,
+    backgroundColor: '#667eea'
   });
 
-  // Load React app
-  const startUrl = isDev
-    ? 'http://localhost:3000'
-    : `file://${path.join(__dirname, '../build/index.html')}`;
-
+  // Load app URL
+  const startUrl = isDev 
+    ? 'http://localhost:3000' 
+    : `file://${path.join(__dirname, 'build/index.html')}`;
+  
+  console.log('Loading URL:', startUrl);
   mainWindow.loadURL(startUrl);
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
+    console.log('Window ready to show');
     mainWindow.show();
-
     if (isDev) {
       mainWindow.webContents.openDevTools();
     }
   });
 
-  // Handle window close - minimize to tray instead
+  // Handle window close
   mainWindow.on('close', (event) => {
     if (!app.isQuiting) {
       event.preventDefault();
       mainWindow.hide();
-
-      // Show tray notification on first minimize
-      if (tray && !tray.isDestroyed()) {
-        new Notification({
-          title: 'Agent Wallboard',
-          body: 'App was minimized to tray'
-        }).show();
+      
+      // Show notification on first minimize
+      if (!global.hasShownTrayNotification) {
+        if (tray) {
+          tray.displayBalloon({
+            title: 'Agent Wallboard',
+            content: 'Application minimized to tray'
+          });
+        }
+        global.hasShownTrayNotification = true;
       }
     }
   });
 
-  // Handle window restore
-  mainWindow.on('restore', () => {
-    mainWindow.show();
+  // Handle navigation errors
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Failed to load:', errorCode, errorDescription);
+    if (!isDev) {
+      mainWindow.loadURL(`file://${path.join(__dirname, 'build/index.html')}`);
+    }
   });
 }
 
 function createTray() {
   try {
-    tray = new Tray(path.join(__dirname, 'public/assets/tray-icon.png'));
-
+    const trayIconPath = path.join(__dirname, 'public/assets/tray-icon.png');
+    console.log('Creating tray icon:', trayIconPath);
+    
+    tray = new Tray(trayIconPath);
+    
     const contextMenu = Menu.buildFromTemplate([
-      {
-        label: 'Show Agent Wallboard',
+      { 
+        label: 'Show App', 
         click: () => {
-          mainWindow.show();
-          mainWindow.focus();
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
         }
       },
       { type: 'separator' },
-      {
-        label: 'About',
-        click: () => {
-          require('electron').dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: 'About',
-            message: 'Agent Wallboard Desktop',
-            detail: 'Version 1.0.0\nBuilt with Electron + React'
-          });
-        }
+      { 
+        label: `Version ${app.getVersion()}`,
+        enabled: false
       },
       { type: 'separator' },
-      {
-        label: 'Quit',
+      { 
+        label: 'Quit', 
         click: () => {
           app.isQuiting = true;
           app.quit();
         }
       }
     ]);
-
+    
     tray.setContextMenu(contextMenu);
-    tray.setToolTip('Agent Wallboard - Click to show');
-
+    tray.setToolTip('Agent Wallboard');
+    
     // Double click to show
     tray.on('double-click', () => {
-      mainWindow.show();
-      mainWindow.focus();
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
     });
-
-    // Single click to show (Windows/Linux)
-    tray.on('click', () => {
-      mainWindow.show();
-      mainWindow.focus();
-    });
-
+    
+    console.log('Tray icon created successfully');
   } catch (error) {
     console.error('Tray creation failed:', error);
+    console.log('Application will continue without tray icon');
   }
 }
 
-// App event handlers
+// App ready
 app.whenReady().then(() => {
+  console.log('App is ready');
   createWindow();
   createTray();
 });
 
+// Window management
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
@@ -171,20 +195,23 @@ app.on('activate', () => {
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
+  console.log('Another instance is already running');
   app.quit();
 } else {
   app.on('second-instance', () => {
-    // Someone tried to run a second instance, focus our window instead
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
       mainWindow.focus();
     }
   });
 }
 
-// Security: Prevent new window creation
-app.on('web-contents-created', (event, contents) => {
-  contents.on('new-window', (event, navigationUrl) => {
-    event.preventDefault();
-  });
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled rejection:', error);
 });

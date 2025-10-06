@@ -1,113 +1,81 @@
-// Notification service with Electron and browser support
-
-export const showDesktopNotification = async (title, body, icon = null) => {
+export const showDesktopNotification = async (title, body) => {
+  console.log('🔔 [Step 1] showDesktopNotification called');
+  console.log('   Title:', title);
+  console.log('   Body:', body);
+  
   try {
-    // Try Electron API first
-    if (window.electronAPI && window.electronAPI.showNotification) {
-      const result = await window.electronAPI.showNotification(title, body);
-      return result.success;
-    }
+    // Check Electron API
+    console.log('🔔 [Step 2] Checking window.electronAPI:', !!window.electronAPI);
+    console.log('🔔 [Step 3] Checking showNotification:', !!window.electronAPI?.showNotification);
     
-    // Fallback to browser Notification API
-    if ('Notification' in window) {
-      if (Notification.permission === 'granted') {
-        const notification = new Notification(title, {
-          body,
-          icon: icon || '/assets/icon.png',
-          badge: '/assets/tray-icon.png',
-          tag: 'agent-wallboard',
-          requireInteraction: false,
-          silent: false
-        });
-        
-        // Auto-close after 5 seconds
-        setTimeout(() => {
-          notification.close();
-        }, 5000);
-        
+    if (window.electronAPI && window.electronAPI.showNotification) {
+      console.log('🔔 [Step 4] Using Electron API');
+      
+      const result = await window.electronAPI.showNotification(title, body);
+      
+      console.log('🔔 [Step 5] Electron API result:', result);
+      
+      if (result.success) {
+        console.log('✅ [Step 6] Notification shown successfully');
         return true;
       } else {
-        console.warn('Notification permission not granted');
-        return false;
+        console.error('❌ [Step 6] Notification failed:', result.error);
       }
+    } else {
+      console.log('⚠️ [Step 4] Electron API not available, trying Web API');
     }
     
-    console.warn('Notifications not supported');
+    // Fallback to Web Notification API
+    if ('Notification' in window) {
+      console.log('🔔 [Step 7] Notification API available');
+      console.log('🔔 [Step 8] Permission:', Notification.permission);
+      
+      if (Notification.permission === 'granted') {
+        console.log('🔔 [Step 9] Creating notification');
+        
+        const notification = new Notification(title, {
+          body,
+          icon: '/assets/icon.png',
+          badge: '/assets/tray-icon.png'
+        });
+        
+        notification.onclick = () => {
+          console.log('🔔 [Step 10] Notification clicked');
+          window.focus();
+        };
+        
+        console.log('✅ [Step 11] Web notification created');
+        return true;
+        
+      } else if (Notification.permission === 'default') {
+        console.log('🔔 [Step 9] Requesting permission');
+        const permission = await Notification.requestPermission();
+        console.log('🔔 [Step 10] Permission result:', permission);
+        
+        if (permission === 'granted') {
+          return showDesktopNotification(title, body);
+        }
+      } else {
+        console.error('❌ [Step 9] Permission denied');
+      }
+    } else {
+      console.error('❌ [Step 7] Notification API not available');
+    }
+    
     return false;
     
   } catch (error) {
-    console.error('Notification error:', error);
+    console.error('❌ [Error] Notification error:', error);
+    console.error('   Stack:', error.stack);
     return false;
   }
 };
 
 export const requestNotificationPermission = async () => {
-  try {
-    if ('Notification' in window && Notification.permission === 'default') {
-      const permission = await Notification.requestPermission();
-      console.log('Notification permission:', permission);
-      return permission === 'granted';
-    }
-    
-    return Notification.permission === 'granted';
-  } catch (error) {
-    console.error('Permission request error:', error);
-    return false;
+  if ('Notification' in window && Notification.permission === 'default') {
+    const permission = await Notification.requestPermission();
+    console.log('Notification permission:', permission);
+    return permission;
   }
-};
-
-export const playNotificationSound = () => {
-  try {
-    // Create audio element for notification sound
-    const audio = new Audio('/assets/notification.mp3');
-    audio.volume = 0.5;
-    audio.play().catch(error => {
-      console.log('Could not play notification sound:', error);
-    });
-  } catch (error) {
-    console.log('Notification sound not available:', error);
-  }
-};
-
-export const showSystemNotification = (title, message, type = 'info') => {
-  // Show in-app notification for important system messages
-  const notification = document.createElement('div');
-  notification.className = `system-notification ${type}`;
-  notification.innerHTML = `
-    <div class="notification-content">
-      <strong>${title}</strong>
-      <p>${message}</p>
-    </div>
-    <button class="notification-close">&times;</button>
-  `;
-  
-  // Style the notification
-  notification.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: ${type === 'error' ? '#f44336' : type === 'warning' ? '#ff9800' : '#4caf50'};
-    color: white;
-    padding: 15px;
-    border-radius: 5px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    z-index: 10000;
-    max-width: 300px;
-    animation: slideIn 0.3s ease-out;
-  `;
-  
-  // Add close functionality
-  const closeBtn = notification.querySelector('.notification-close');
-  closeBtn.onclick = () => notification.remove();
-  
-  // Add to DOM
-  document.body.appendChild(notification);
-  
-  // Auto-remove after 5 seconds
-  setTimeout(() => {
-    if (notification.parentNode) {
-      notification.style.animation = 'slideOut 0.3s ease-in';
-      setTimeout(() => notification.remove(), 300);
-    }
-  }, 5000);
+  return Notification.permission;
 };

@@ -13,26 +13,14 @@ function AgentInfo({ agent, status }) {
     return colors[status] || colors.Offline;
   };
 
-  const getStatusIcon = (status) => {
-    const icons = {
-      Available: '✅',
-      Busy: '🔴',
-      Break: '⏸️',
-      Offline: '⭕'
-    };
-    return icons[status] || icons.Offline;
-  };
-
   return (
     <div className="agent-info">
       <div className="agent-avatar">
-        <span className="avatar-icon">👤</span>
+        <span>👤</span>
       </div>
       
       <div className="agent-details">
-        <h3 className="agent-name">
-          {agent.firstName} {agent.lastName}
-        </h3>
+        <h3 className="agent-name">{agent.agentName}</h3>
         
         <div className="agent-meta">
           <div className="agent-code">
@@ -47,13 +35,11 @@ function AgentInfo({ agent, status }) {
         </div>
         
         <div className="agent-status">
-          <span className="status-icon">{getStatusIcon(status)}</span>
           <span 
-            className="status-text"
-            style={{ color: getStatusColor(status) }}
-          >
-            {status}
-          </span>
+            className="status-dot"
+            style={{ backgroundColor: getStatusColor(status) }}
+          ></span>
+          <span className="status-text">{status}</span>
         </div>
       </div>
     </div>

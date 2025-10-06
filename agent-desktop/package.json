@@ -1,43 +1,66 @@
 {
-  "name": "agent-desktop",
-  "version": "1.0.0",
-  "description": "Agent Wallboard Desktop Application",
+  "name": "agent-wallboard-desktop",
+  "version": "3.1.0",
+  "description": "Agent Desktop Application for Wallboard System - Complete Version",
   "main": "main.js",
+  "homepage": "./",
+  "author": "Your Name",
+  "license": "MIT",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
     "electron": "electron .",
     "electron-dev": "concurrently \"npm start\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron-pack": "npm run build && electron-builder",
     "dist": "npm run build && electron-builder",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
-    "dotenv": "^17.2.2",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-scripts": "^5.0.1",
-    "socket.io-client": "^4.8.1",
-    "web-vitals": "^5.1.0"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "socket.io-client": "^4.7.2",
+    "dotenv": "^16.3.1"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
-    "electron": "^25.9.8",
-    "electron-builder": "^24.13.3",
-    "wait-on": "^7.2.0"
+    "electron": "^28.0.0",
+    "concurrently": "^8.2.0",
+    "wait-on": "^7.0.1",
+    "electron-builder": "^24.6.3"
   },
-  "homepage": "./",
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
+  "build": {
+    "appId": "com.wallboard.agent",
+    "productName": "Agent Wallboard",
+    "files": [
+      "build/**/*",
+      "main.js",
+      "preload.js",
+      "public/assets/**/*"
     ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "directories": {
+      "buildResources": "public/assets"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "public/assets/icon.png"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "public/assets/icon.png",
+      "category": "public.app-category.business"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "public/assets/icon.png",
+      "category": "Office"
+    }
+  },
+  "browserslist": {
+    "production": [">0.2%", "not dead", "not op_mini all"],
+    "development": ["last 1 chrome version", "last 1 firefox version"]
   }
 }

@@ -1,92 +1,116 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { formatTime, getTimeAgo } from '../utils/dateUtils';
+import { markMessageAsRead } from '../services/api';
+import './MessagePanel.css';
 
-function MessagePanel({ messages, agentCode }) {
+function MessagePanel({ messages, agentCode, loading = false }) {
   const messagesEndRef = useRef(null);
+  const messageListRef = useRef(null);
+  const [markingRead, setMarkingRead] = useState(new Set());
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [localMessages, setLocalMessages] = useState([]);
+  
+  // ✅ เพิ่ม state สำหรับ filtering และ pagination
+  const [filter, setFilter] = useState('all'); // 'all', 'unread', 'broadcast', 'direct'
+  const [showAll, setShowAll] = useState(false);
+  const [displayLimit, setDisplayLimit] = useState(5);
 
-  // Auto-scroll to bottom when new messages arrive
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // Sync กับ messages prop
+  useEffect(() => {
+    setLocalMessages(messages);
+  }, [messages]);
+
+  const scrollToBottom = (force = false) => {
+    if (force || autoScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const handleScroll = () => {
+    if (messageListRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = messageListRef.current;
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+      setAutoScroll(isAtBottom);
+    }
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (!showAll) {
+      scrollToBottom();
+    }
+  }, [localMessages, showAll]);
 
-  const getMessageTypeIcon = (type) => {
-    return type === 'broadcast' ? '📢' : '💬';
+  const handleMarkAsRead = async (messageId) => {
+    if (markingRead.has(messageId)) return;
+
+    setMarkingRead(prev => new Set(prev).add(messageId));
+
+    // Optimistic update
+    setLocalMessages(prev => prev.map(msg => 
+      (msg._id === messageId || msg.messageId === messageId)
+        ? { ...msg, isRead: true, readAt: new Date() }
+        : msg
+    ));
+
+    try {
+      await markMessageAsRead(messageId);
+      console.log('✅ Message marked as read:', messageId);
+    } catch (error) {
+      console.error('❌ Failed to mark message as read:', error);
+      // Rollback
+      setLocalMessages(prev => prev.map(msg => 
+        (msg._id === messageId || msg.messageId === messageId)
+          ? { ...msg, isRead: false, readAt: null }
+          : msg
+      ));
+    } finally {
+      setMarkingRead(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(messageId);
+        return newSet;
+      });
+    }
   };
 
-  const getPriorityIcon = (priority) => {
-    const icons = {
-      high: '🔴',
-      normal: '🔵',
-      low: '⚪'
+  const getPriorityColor = (priority) => {
+    const colors = {
+      high: '#f44336',
+      normal: '#2196f3',
+      low: '#9e9e9e'
     };
-    return icons[priority] || icons.normal;
+    return colors[priority] || colors.normal;
   };
 
-  const renderMessage = (message, index) => {
-    const isToMe = message.toCode === agentCode;
-    const isBroadcast = message.type === 'broadcast';
-    
-    return (
-      <div 
-        key={index} 
-        className={`message-item ${message.priority} ${isBroadcast ? 'broadcast' : 'direct'}`}
-      >
-        <div className="message-header">
-          <div className="message-meta">
-            <span className="message-type">
-              {getMessageTypeIcon(message.type)}
-            </span>
-            <span className="sender">
-              From: <strong>{message.fromCode}</strong>
-            </span>
-            {message.priority !== 'normal' && (
-              <span className="priority">
-                {getPriorityIcon(message.priority)} {message.priority.toUpperCase()}
-              </span>
-            )}
-          </div>
-          
-          <div className="message-time">
-            <span className="time" title={new Date(message.timestamp).toLocaleString()}>
-              {formatTime(message.timestamp)}
-            </span>
-            <span className="time-ago">
-              {getTimeAgo(message.timestamp)}
-            </span>
-          </div>
-        </div>
-        
-        <div className="message-content">
-          {message.content}
-        </div>
-        
-        <div className="message-footer">
-          {isBroadcast ? (
-            <span className="broadcast-info">📢 Broadcast to all team members</span>
-          ) : (
-            <span className="direct-info">💬 Direct message to you</span>
-          )}
-        </div>
-      </div>
-    );
-  };
+  // ✅ Filter messages
+  const filteredMessages = localMessages.filter(msg => {
+    if (filter === 'unread') return !msg.isRead;
+    if (filter === 'broadcast') return msg.type === 'broadcast';
+    if (filter === 'direct') return msg.type === 'direct';
+    return true; // 'all'
+  });
+
+  // ✅ Limit messages
+  const displayedMessages = showAll 
+    ? filteredMessages 
+    : filteredMessages.slice(-displayLimit);
+
+  const unreadCount = localMessages.filter(m => !m.isRead).length;
+  const hiddenCount = filteredMessages.length - displayedMessages.length;
 
   return (
     <div className="message-panel">
       <div className="message-header">
         <h3>
-          Messages 
-          <span className="message-count">({messages.length})</span>
+          Messages ({localMessages.length})
+          {unreadCount > 0 && (
+            <span className="unread-badge">{unreadCount} unread</span>
+          )}
         </h3>
         
-        {messages.length > 0 && (
+        {localMessages.length > 0 && !showAll && (
           <button 
-            onClick={scrollToBottom}
-            className="scroll-to-bottom"
+            onClick={() => scrollToBottom(true)}
+            className="scroll-btn"
             title="Scroll to bottom"
           >
             ⬇️
@@ -94,20 +118,163 @@ function MessagePanel({ messages, agentCode }) {
         )}
       </div>
       
-      <div className="message-list">
-        {messages.length === 0 ? (
+      {/* ✅ Filter Tabs */}
+      <div className="message-filters">
+        <button 
+          className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
+          onClick={() => setFilter('all')}
+        >
+          All ({localMessages.length})
+        </button>
+        <button 
+          className={`filter-btn ${filter === 'unread' ? 'active' : ''}`}
+          onClick={() => setFilter('unread')}
+        >
+          Unread ({unreadCount})
+        </button>
+        <button 
+          className={`filter-btn ${filter === 'broadcast' ? 'active' : ''}`}
+          onClick={() => setFilter('broadcast')}
+        >
+          Broadcast ({localMessages.filter(m => m.type === 'broadcast').length})
+        </button>
+        <button 
+          className={`filter-btn ${filter === 'direct' ? 'active' : ''}`}
+          onClick={() => setFilter('direct')}
+        >
+          Direct ({localMessages.filter(m => m.type === 'direct').length})
+        </button>
+      </div>
+
+      {/* ✅ Show All Toggle */}
+      {filteredMessages.length > displayLimit && (
+        <div className="show-all-toggle">
+          <button 
+            className="toggle-btn"
+            onClick={() => setShowAll(!showAll)}
+          >
+            {showAll 
+              ? `Show Latest ${displayLimit}` 
+              : `Show All (${hiddenCount} more)`
+            }
+          </button>
+        </div>
+      )}
+      
+      <div 
+        className="message-list"
+        ref={messageListRef}
+        onScroll={handleScroll}
+      >
+        {loading ? (
+          <div className="loading-messages">
+            <div className="loading-spinner"></div>
+            <p>Loading messages...</p>
+          </div>
+        ) : displayedMessages.length === 0 ? (
           <div className="no-messages">
-            <div className="no-messages-icon">📭</div>
-            <p>No messages yet</p>
-            <small>Messages from supervisors will appear here</small>
+            <div className="no-messages-icon">🔭</div>
+            <p>
+              {filteredMessages.length === 0 
+                ? 'No messages yet'
+                : `No ${filter} messages`
+              }
+            </p>
+            <small>
+              {filter !== 'all' && (
+                <button 
+                  className="clear-filter-btn"
+                  onClick={() => setFilter('all')}
+                >
+                  Clear filter
+                </button>
+              )}
+            </small>
           </div>
         ) : (
           <>
-            {messages.map(renderMessage)}
+            {/* ✅ Hidden messages indicator */}
+            {!showAll && hiddenCount > 0 && (
+              <div className="hidden-indicator">
+                {hiddenCount} older messages hidden
+              </div>
+            )}
+
+            {displayedMessages.map((message, index) => (
+              <div 
+                key={message._id || message.messageId || index}
+                className={`message-item ${message.type} ${message.isRead ? 'read' : 'unread'}`}
+              >
+                <div className="message-top">
+                  <div className="message-from">
+                    <span className="from-label">From:</span>
+                    <strong>{message.fromCode}</strong>
+                  </div>
+                  <div className="message-priority">
+                    <span 
+                      className="priority-indicator"
+                      style={{ backgroundColor: getPriorityColor(message.priority) }}
+                      title={`Priority: ${message.priority}`}
+                    >
+                      {message.priority === 'high' ? '🔴' : 
+                       message.priority === 'low' ? '🔵' : '⚪'}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="message-content">
+                  {message.content}
+                </div>
+                
+                <div className="message-footer">
+                  <div className="message-meta">
+                    <span className="message-type">
+                      {message.type === 'broadcast' ? '📢 Broadcast' : '💬 Direct'}
+                    </span>
+                    <span className="message-time">
+                      {formatTime(message.timestamp)}
+                    </span>
+                    <span className="time-ago">
+                      {getTimeAgo(message.timestamp)}
+                    </span>
+                  </div>
+                  
+                  {!message.isRead && (
+                    <button
+                      className="mark-read-btn"
+                      onClick={() => handleMarkAsRead(message._id || message.messageId)}
+                      disabled={markingRead.has(message._id || message.messageId)}
+                      title="Mark as read"
+                    >
+                      {markingRead.has(message._id || message.messageId) ? '⏳' : '✓'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
             <div ref={messagesEndRef} />
           </>
         )}
       </div>
+
+      {/* ✅ Quick actions */}
+      {unreadCount > 0 && (
+        <div className="message-actions">
+          <button 
+            className="action-btn"
+            onClick={() => {
+              // Mark all as read
+              displayedMessages.forEach(msg => {
+                if (!msg.isRead) {
+                  handleMarkAsRead(msg._id || msg.messageId);
+                }
+              });
+            }}
+          >
+            Mark all as read
+          </button>
+        </div>
+      )}
     </div>
   );
 }
