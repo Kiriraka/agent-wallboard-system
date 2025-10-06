@@ -1,42 +1,38 @@
-// src/theme/theme.js
 import { createTheme } from '@mui/material/styles';
 
 const theme = createTheme({
+  // ชุดสีหลัก
   palette: {
     primary: {
-      main: '#1976d2',      // Blue
+      main: '#1976d2',
       light: '#42a5f5',
       dark: '#1565c0',
     },
     secondary: {
-      main: '#dc004e',      // Pink
+      main: '#dc004e',
     },
     success: {
-      main: '#4caf50',      // Green for Available
+      main: '#4caf50',
     },
     warning: {
-      main: '#ff9800',      // Orange for Busy
+      main: '#ff9800',
     },
     info: {
-      main: '#2196f3',      // Blue for Break
+      main: '#2196f3',
     },
     error: {
-      main: '#f44336',      // Red for alerts
-    },
-    background: {
-      default: '#f5f5f5',
-      paper: '#ffffff',
+      main: '#f44336',
     },
   },
+  
+  // Typography
   typography: {
     fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    h4: {
-      fontWeight: 600,
-    },
-    h6: {
-      fontWeight: 500,
-    },
+    h4: { fontWeight: 600 },
+    h6: { fontWeight: 500 },
   },
+  
+  // Component customization
   components: {
     MuiCard: {
       styleOverrides: {
@@ -55,13 +51,6 @@ const theme = createTheme({
           borderRadius: 6,
           textTransform: 'none',
           fontWeight: 500,
-        },
-      },
-    },
-    MuiChip: {
-      styleOverrides: {
-        root: {
-          borderRadius: 6,
         },
       },
     },

@@ -1,106 +1,159 @@
-// src/components/Dashboard.js
 import React, { useState } from 'react';
 import {
-  Grid, AppBar, Toolbar, Typography, Button, Box, Chip
+    Grid, AppBar, Toolbar, Typography, Button, Box,
+    Chip, IconButton, Tooltip
 } from '@mui/material';
-import { Logout, People, Message } from '@mui/icons-material';
+import {
+    Logout, People, Message, Refresh, Circle
+} from '@mui/icons-material';
 import TeamOverview from './TeamOverview';
 import AgentCard from './AgentCard';
 import MessagePanel from './MessagePanel';
 import StatusFilter from './StatusFilter';
 
-function Dashboard({ supervisor, teamData, messages, onSendMessage }) {
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [showMessagePanel, setShowMessagePanel] = useState(false);
+function Dashboard({
+    supervisor,
+    teamData,
+    messages,
+    socketConnected,
+    onSendMessage,
+    onLogout
+}) {
+    const [statusFilter, setStatusFilter] = useState('All');
+    const [showMessagePanel, setShowMessagePanel] = useState(false);
 
-  // กรองข้อมูล agent ตาม status filter
-  const filteredAgents = teamData.filter(agent => 
-    statusFilter === 'All' || agent.currentStatus === statusFilter
-  );
+    // ✅ เพิ่ม: ตรวจสอบและสร้าง safeTeamData
+    const safeTeamData = Array.isArray(teamData) ? teamData : [];
 
-  // สถิติทีม
-  const teamStats = {
-    total: teamData.length,
-    online: teamData.filter(a => a.isOnline).length,
-    available: teamData.filter(a => a.currentStatus === 'Available').length,
-    busy: teamData.filter(a => a.currentStatus === 'Busy').length
-  };
+    // กรองข้อมูล agent ตาม status filter
+    const filteredAgents = safeTeamData.filter(agent =>
+        statusFilter === 'All' || agent.currentStatus === statusFilter
+    );
 
-  return (
-    <>
-      {/* App Bar */}
-      <AppBar position="static" elevation={1}>
-        <Toolbar>
-          <People sx={{ mr: 1 }} />
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            {supervisor.name} - {supervisor.teamName}
-          </Typography>
-          <Chip 
-            label={`${teamStats.online}/${teamStats.total} Online`}
-            color="success"
-            variant="outlined"
-            sx={{ mr: 2, color: 'white', borderColor: 'white' }}
-          />
-          <Button 
-            color="inherit" 
-            startIcon={<Message />}
-            onClick={() => setShowMessagePanel(true)}
-            sx={{ mr: 1 }}
-          >
-            Messages
-          </Button>
-          <Button color="inherit" startIcon={<Logout />}>
-            Logout
-          </Button>
-        </Toolbar>
-      </AppBar>
+    // สถิติทีม
+    const teamStats = {
+        total: safeTeamData.length,
+        online: safeTeamData.filter(a => a.isOnline).length,
+        available: safeTeamData.filter(a => a.currentStatus === 'Available').length,
+        busy: safeTeamData.filter(a => a.currentStatus === 'Busy').length,
+        break: safeTeamData.filter(a => a.currentStatus === 'Break').length,
+        offline: safeTeamData.filter(a => a.currentStatus === 'Offline').length
+    };
 
-      <Box sx={{ mt: 3 }}>
-        <Grid container spacing={3}>
-          {/* Team Overview */}
-          <Grid item xs={12}>
-            <TeamOverview stats={teamStats} />
-          </Grid>
+    const handleRefresh = () => {
+        window.location.reload();
+    };
 
-          {/* Status Filter */}
-          <Grid item xs={12}>
-            <StatusFilter 
-              currentFilter={statusFilter}
-              onFilterChange={setStatusFilter}
-              stats={teamStats}
-            />
-          </Grid>
+    return (
+        <Box>
+            {/* App Bar */}
+            <AppBar position="static" elevation={1}>
+                <Toolbar>
+                    <People sx={{ mr: 1 }} />
 
-          {/* Agent Cards */}
-          <Grid item xs={12}>
-            <Grid container spacing={2}>
-              {filteredAgents.map(agent => (
-                <Grid item xs={12} sm={6} md={4} lg={3} key={agent.agentCode}>
-                  <AgentCard 
-                    agent={agent} 
-                    onSendMessage={(content) => onSendMessage({
-                      type: 'direct',
-                      to: agent.agentCode,
-                      content
-                    })}
-                  />
+                    <Box sx={{ flexGrow: 1 }}>
+                        <Typography variant="h6">
+                            {supervisor.name}
+                        </Typography>
+                        <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                            {supervisor.teamName}
+                        </Typography>
+                    </Box>
+
+                    <Tooltip title={socketConnected ? 'Connected' : 'Disconnected'}>
+                        <Circle
+                            sx={{
+                                fontSize: 12,
+                                color: socketConnected ? 'success.light' : 'error.light',
+                                mr: 2
+                            }}
+                        />
+                    </Tooltip>
+
+                    <Chip
+                        label={`${teamStats.online}/${teamStats.total} Online`}
+                        color="success"
+                        variant="outlined"
+                        sx={{ mr: 2, color: 'white', borderColor: 'white' }}
+                    />
+
+                    <Button
+                        color="inherit"
+                        startIcon={<Message />}
+                        onClick={() => setShowMessagePanel(true)}
+                        sx={{ mr: 1 }}
+                    >
+                        Send Message
+                    </Button>
+
+                    <Tooltip title="Refresh">
+                        <IconButton color="inherit" onClick={handleRefresh}>
+                            <Refresh />
+                        </IconButton>
+                    </Tooltip>
+
+                    <Button
+                        color="inherit"
+                        startIcon={<Logout />}
+                        onClick={onLogout}
+                    >
+                        Logout
+                    </Button>
+                </Toolbar>
+            </AppBar>
+
+            {/* Dashboard Content */}
+            <Box sx={{ mt: 3 }}>
+                <Grid container spacing={3}>
+                    <Grid item xs={12}>
+                        <TeamOverview stats={teamStats} />
+                    </Grid>
+
+                    <Grid item xs={12}>
+                        <StatusFilter
+                            currentFilter={statusFilter}
+                            onFilterChange={setStatusFilter}
+                            stats={teamStats}
+                        />
+                    </Grid>
+
+                    <Grid item xs={12}>
+                        {filteredAgents.length > 0 ? (
+                            <Grid container spacing={2}>
+                                {filteredAgents.map(agent => (
+                                    <Grid item xs={12} sm={6} md={4} lg={3} key={agent.agentCode}>
+                                        <AgentCard
+                                            agent={agent}
+                                            onSendMessage={(content) => onSendMessage({
+                                                type: 'direct',
+                                                toCode: agent.agentCode,
+                                                content
+                                            })}
+                                        />
+                                    </Grid>
+                                ))}
+                            </Grid>
+                        ) : (
+                            <Box textAlign="center" py={5}>
+                                <Typography variant="h6" color="text.secondary">
+                                    No agents found with status: {statusFilter}
+                                </Typography>
+                            </Box>
+                        )}
+                    </Grid>
                 </Grid>
-              ))}
-            </Grid>
-          </Grid>
-        </Grid>
-      </Box>
+            </Box>
 
-      {/* Message Panel Modal */}
-      <MessagePanel
-        open={showMessagePanel}
-        onClose={() => setShowMessagePanel(false)}
-        teamData={teamData}
-        messages={messages}
-        onSendMessage={onSendMessage}
-      />
-    </>
-  );
+            {/* Message Panel Modal */}
+            <MessagePanel
+                open={showMessagePanel}
+                onClose={() => setShowMessagePanel(false)}
+                supervisor={supervisor}
+                teamData={safeTeamData}
+                onSendMessage={onSendMessage}
+            />
+        </Box>
+    );
 }
 
 export default Dashboard;
