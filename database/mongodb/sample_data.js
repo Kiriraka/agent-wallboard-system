@@ -1,180 +1,318 @@
 const mongoose = require('mongoose');
-const { AgentStatus, Message, ConnectionLog } = require('./collections');
 
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/wallboard';
+
+// Schema Definitions
+const messageSchema = new mongoose.Schema({
+  fromCode: { type: String, required: true, uppercase: true },
+  toCode: { type: String, uppercase: true },
+  toTeamId: { type: Number },
+  content: { type: String, required: true },
+  type: { type: String, enum: ['direct', 'broadcast'], required: true },
+  priority: { type: String, enum: ['low', 'normal', 'high'], default: 'normal' },
+  isRead: { type: Boolean, default: false },
+  readAt: { type: Date },
+  timestamp: { type: Date, default: Date.now }
+}, { collection: 'messages' });
+
+const statusSchema = new mongoose.Schema({
+  agentCode: { type: String, required: true, uppercase: true },
+  status: { type: String, enum: ['Available', 'Busy', 'Break', 'Offline'], required: true },
+  timestamp: { type: Date, default: Date.now },
+  teamId: { type: Number },
+  duration: { type: Number }
+}, { collection: 'agent_status' });
+
+const connectionLogSchema = new mongoose.Schema({
+  agentCode: { type: String, required: true, uppercase: true },
+  eventType: { type: String, enum: ['connect', 'disconnect', 'reconnect'], required: true },
+  timestamp: { type: Date, default: Date.now },
+  socketId: { type: String, required: true },
+  ipAddress: { type: String },
+  userAgent: { type: String },
+  connectionDuration: { type: Number }
+}, { collection: 'connection_logs' });
+
+// Create Models
+const Message = mongoose.model('Message', messageSchema);
+const AgentStatus = mongoose.model('AgentStatus', statusSchema);
+const ConnectionLog = mongoose.model('ConnectionLog', connectionLogSchema);
+
+// Sample Data
 async function insertSampleData() {
   try {
-    console.log('🌱 Inserting MongoDB sample data...');
-
-    // Clear existing data
-    await AgentStatus.deleteMany({});
+    console.log('🧹 Clearing existing data...');
     await Message.deleteMany({});
+    await AgentStatus.deleteMany({});
     await ConnectionLog.deleteMany({});
 
-    // Sample Agent Status Data
-    const statusData = [
+    console.log('💬 Inserting sample messages...');
+    const sampleMessages = [
       {
-        agentCode: 'AG001',
-        status: 'Available',
-        sessionId: 'session_001',
-        timestamp: new Date('2024-09-22T08:00:00Z')
-      },
-      {
-        agentCode: 'AG002',
-        status: 'Busy',
-        sessionId: 'session_002',
-        timestamp: new Date('2024-09-22T08:15:00Z')
-      },
-      {
-        agentCode: 'AG003',
-        status: 'Break',
-        sessionId: 'session_003',
-        timestamp: new Date('2024-09-22T09:00:00Z')
-      },
-      {
-        agentCode: 'AG004',
-        status: 'Available',
-        sessionId: 'session_004',
-        timestamp: new Date('2024-09-22T08:30:00Z')
-      },
-      {
-        agentCode: 'AG005',
-        status: 'Offline',
-        sessionId: 'session_005',
-        timestamp: new Date('2024-09-22T07:45:00Z')
-      }
-    ];
-
-    // Sample Messages
-    const messageData = [
-      {
-        fromCode: 'SP001',
-        toCode: 'AG001',
-        message: 'Please check your queue, there are 3 pending tickets.',
-        type: 'direct',
-        priority: 'normal',
-        timestamp: new Date('2024-09-22T09:15:00Z'),
-        isRead: false
-      },
-      {
-        fromCode: 'SP001',
-        toCode: 'AG002',
-        message: 'Great job on handling the difficult customer!',
-        type: 'direct',
-        priority: 'low',
-        timestamp: new Date('2024-09-22T10:00:00Z'),
+        fromCode: "SP001",
+        toCode: "AG001",
+        content: "Good morning! Ready for the day?",
+        type: "direct",
+        priority: "normal",
+        timestamp: new Date(Date.now() - 3600000),
         isRead: true,
-        readAt: new Date('2024-09-22T10:02:00Z')
+        readAt: new Date(Date.now() - 3500000)
       },
       {
-        fromCode: 'SP001',
-        toCode: null,
-        message: 'Team meeting at 2 PM today. Please join the conference room.',
-        type: 'broadcast',
-        priority: 'high',
-        timestamp: new Date('2024-09-22T11:00:00Z'),
+        fromCode: "SP001",
+        toTeamId: 1,
+        content: "Team meeting at 2 PM today",
+        type: "broadcast",
+        priority: "high",
+        timestamp: new Date(Date.now() - 1800000),
         isRead: false
       },
       {
-        fromCode: 'SP002',
-        toCode: 'AG005',
-        message: 'Can you help with the technical issue in ticket #12345?',
-        type: 'direct',
-        priority: 'urgent',
-        timestamp: new Date('2024-09-22T11:30:00Z'),
+        fromCode: "SP002",
+        toCode: "AG005",
+        content: "Please check the technical queue",
+        type: "direct",
+        priority: "normal",
+        timestamp: new Date(Date.now() - 900000),
         isRead: false
       },
       {
-        fromCode: 'SP003',
-        toCode: null,
-        message: 'New sales target for this month has been updated. Check your dashboard.',
-        type: 'broadcast',
-        priority: 'normal',
-        timestamp: new Date('2024-09-22T12:00:00Z'),
+        fromCode: "SP002",
+        toCode: "AG006",
+        content: "Great job on handling that complex case!",
+        type: "direct",
+        priority: "normal",
+        timestamp: new Date(Date.now() - 5400000),
+        isRead: true,
+        readAt: new Date(Date.now() - 5300000)
+      },
+      {
+        fromCode: "SP003",
+        toTeamId: 3,
+        content: "Great sales numbers this week!",
+        type: "broadcast",
+        priority: "normal",
+        timestamp: new Date(Date.now() - 7200000),
+        isRead: true
+      },
+      {
+        fromCode: "SP003",
+        toCode: "AG008",
+        content: "Can you follow up with client ABC?",
+        type: "direct",
+        priority: "high",
+        timestamp: new Date(Date.now() - 600000),
         isRead: false
       }
     ];
+    await Message.insertMany(sampleMessages);
 
-    // Sample Connection Logs
-    const connectionData = [
+    console.log('📊 Inserting sample status logs...');
+    const sampleStatusLogs = [
+      // AG001 status changes
       {
-        agentCode: 'AG001',
-        eventType: 'connect',
-        timestamp: new Date('2024-09-22T08:00:00Z'),
-        ipAddress: '192.168.1.101',
-        userAgent: 'Electron Agent App v1.0',
-        sessionId: 'session_001'
+        agentCode: "AG001",
+        status: "Available",
+        timestamp: new Date(Date.now() - 7200000),
+        teamId: 1,
+        duration: 3600
       },
       {
-        agentCode: 'AG002',
-        eventType: 'connect',
-        timestamp: new Date('2024-09-22T08:15:00Z'),
-        ipAddress: '192.168.1.102',
-        userAgent: 'Electron Agent App v1.0',
-        sessionId: 'session_002'
+        agentCode: "AG001",
+        status: "Busy",
+        timestamp: new Date(Date.now() - 3600000),
+        teamId: 1,
+        duration: 1800
+      },
+      // AG002 status changes
+      {
+        agentCode: "AG002",
+        status: "Available",
+        timestamp: new Date(Date.now() - 14400000),
+        teamId: 1,
+        duration: 7200
       },
       {
-        agentCode: 'SP001',
-        eventType: 'connect',
-        timestamp: new Date('2024-09-22T07:45:00Z'),
-        ipAddress: '192.168.1.201',
-        userAgent: 'Mozilla/5.0 Chrome/118.0.0.0',
-        sessionId: 'supervisor_session_001'
+        agentCode: "AG002",
+        status: "Break",
+        timestamp: new Date(Date.now() - 7200000),
+        teamId: 1,
+        duration: 900
+      },
+      // AG003 status changes
+      {
+        agentCode: "AG003",
+        status: "Available",
+        timestamp: new Date(Date.now() - 10800000),
+        teamId: 1,
+        duration: 5400
+      },
+      // AG005 status changes
+      {
+        agentCode: "AG005",
+        status: "Busy",
+        timestamp: new Date(Date.now() - 1800000),
+        teamId: 2,
+        duration: 1500
+      },
+      // AG006 status changes
+      {
+        agentCode: "AG006",
+        status: "Available",
+        timestamp: new Date(Date.now() - 9000000),
+        teamId: 2,
+        duration: 4500
+      },
+      // AG008 status changes
+      {
+        agentCode: "AG008",
+        status: "Busy",
+        timestamp: new Date(Date.now() - 3600000),
+        teamId: 3,
+        duration: 2700
+      },
+      // AG009 status changes
+      {
+        agentCode: "AG009",
+        status: "Available",
+        timestamp: new Date(Date.now() - 7200000),
+        teamId: 3,
+        duration: 7200
       }
     ];
+    await AgentStatus.insertMany(sampleStatusLogs);
 
-    // Insert data
-    await AgentStatus.insertMany(statusData);
-    console.log('✅ Agent status data inserted');
+    console.log('🔗 Inserting sample connection logs...');
+    const sampleConnectionLogs = [
+      // AG001 connections
+      {
+        agentCode: "AG001",
+        eventType: "connect",
+        timestamp: new Date(Date.now() - 28800000),
+        socketId: "socket_ag001_001",
+        ipAddress: "192.168.1.100",
+        userAgent: "Agent Desktop App v1.0"
+      },
+      {
+        agentCode: "AG001",
+        eventType: "disconnect",
+        timestamp: new Date(Date.now() - 3600000),
+        socketId: "socket_ag001_001",
+        connectionDuration: 25200
+      },
+      // AG002 connections
+      {
+        agentCode: "AG002",
+        eventType: "connect",
+        timestamp: new Date(Date.now() - 14400000),
+        socketId: "socket_ag002_001",
+        ipAddress: "192.168.1.101",
+        userAgent: "Agent Desktop App v1.0"
+      },
+      // AG003 connections
+      {
+        agentCode: "AG003",
+        eventType: "connect",
+        timestamp: new Date(Date.now() - 10800000),
+        socketId: "socket_ag003_001",
+        ipAddress: "192.168.1.102",
+        userAgent: "Agent Desktop App v1.0"
+      },
+      // AG005 connections
+      {
+        agentCode: "AG005",
+        eventType: "connect",
+        timestamp: new Date(Date.now() - 7200000),
+        socketId: "socket_ag005_001",
+        ipAddress: "192.168.1.105",
+        userAgent: "Agent Desktop App v1.0"
+      },
+      // AG006 connections
+      {
+        agentCode: "AG006",
+        eventType: "connect",
+        timestamp: new Date(Date.now() - 9000000),
+        socketId: "socket_ag006_001",
+        ipAddress: "192.168.1.106",
+        userAgent: "Agent Desktop App v1.0"
+      },
+      {
+        agentCode: "AG006",
+        eventType: "disconnect",
+        timestamp: new Date(Date.now() - 4500000),
+        socketId: "socket_ag006_001",
+        connectionDuration: 4500
+      },
+      // AG008 connections
+      {
+        agentCode: "AG008",
+        eventType: "connect",
+        timestamp: new Date(Date.now() - 5400000),
+        socketId: "socket_ag008_001",
+        ipAddress: "192.168.1.108",
+        userAgent: "Agent Desktop App v1.0"
+      }
+    ];
+    await ConnectionLog.insertMany(sampleConnectionLogs);
 
-    await Message.insertMany(messageData);
-    console.log('✅ Message data inserted');
-
-    await ConnectionLog.insertMany(connectionData);
-    console.log('✅ Connection log data inserted');
-
-    console.log('🎉 MongoDB sample data insertion completed!');
-
-    // Verify data
-    const statusCount = await AgentStatus.countDocuments();
+    // Verify
     const messageCount = await Message.countDocuments();
+    const statusCount = await AgentStatus.countDocuments();
     const logCount = await ConnectionLog.countDocuments();
 
-    console.log(`📊 Verification:
-    - Agent Status records: ${statusCount}
-    - Message records: ${messageCount}
-    - Connection Log records: ${logCount}`);
+    console.log('✅ Sample data inserted successfully!');
+    console.log('📊 Summary:');
+    console.log(`   - Messages: ${messageCount} records`);
+    console.log(`   - Status logs: ${statusCount} records`);
+    console.log(`   - Connection logs: ${logCount} records`);
 
   } catch (error) {
     console.error('❌ Error inserting sample data:', error);
+    throw error;
   }
 }
 
-// MongoDB Connection and Setup
+// Main Setup Function with Error Handling
 async function setupMongoDB() {
-  try {
-    // Connect to MongoDB
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/wallboard';
-    await mongoose.connect(mongoUri);
-    console.log('✅ Connected to MongoDB');
+  let retries = 3;
+  
+  while (retries > 0) {
+    try {
+      console.log('🍃 Connecting to MongoDB...');
+      await mongoose.connect(MONGODB_URI);
+      console.log('✅ Connected to MongoDB');
 
-    // Insert sample data
-    await insertSampleData();
-    
-    console.log('🚀 MongoDB setup completed successfully!');
-  } catch (error) {
-    console.error('❌ MongoDB setup failed:', error);
-  } finally {
-    await mongoose.disconnect();
+      await insertSampleData();
+      
+      console.log('🚀 MongoDB setup completed!');
+      return;
+      
+    } catch (error) {
+      retries--;
+      console.error(`❌ MongoDB setup failed: ${error.message}`);
+      
+      if (retries > 0) {
+        console.log(`⚠️  Retrying... (${retries} attempts left)`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      } else {
+        console.error('❌ All retry attempts failed');
+        throw error;
+      }
+    } finally {
+      if (mongoose.connection.readyState === 1) {
+        await mongoose.disconnect();
+      }
+    }
   }
 }
 
-// Export for use in other files
-module.exports = {
-  setupMongoDB,
-  insertSampleData
-};
-
-// Run setup if called directly
+// Run if called directly
 if (require.main === module) {
-  setupMongoDB();
+  setupMongoDB().catch(error => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
 }
+
+module.exports = { setupMongoDB, insertSampleData };

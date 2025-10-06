@@ -1,32 +1,37 @@
-const errorHandler = (err, req, res, next) => {
+function errorHandler(err, req, res, next) {
   console.error('Error:', err);
-  
-  // Default error
-  let error = {
-    success: false,
-    error: 'Internal server error'
-  };
   
   // Mongoose validation error
   if (err.name === 'ValidationError') {
-    const message = Object.values(err.errors).map(val => val.message).join(', ');
-    error.error = message;
-    return res.status(400).json(error);
+    const messages = Object.values(err.errors).map(e => e.message);
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      details: messages
+    });
   }
   
   // Mongoose duplicate key error
   if (err.code === 11000) {
-    error.error = 'Duplicate field value entered';
-    return res.status(400).json(error);
+    return res.status(400).json({
+      success: false,
+      error: 'Duplicate field value'
+    });
   }
   
-  // JWT error
+  // JWT errors
   if (err.name === 'JsonWebTokenError') {
-    error.error = 'Invalid token';
-    return res.status(401).json(error);
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid token'
+    });
   }
   
-  res.status(500).json(error);
-};
+  // Default error
+  res.status(500).json({
+    success: false,
+    error: 'Internal server error'
+  });
+}
 
 module.exports = errorHandler;

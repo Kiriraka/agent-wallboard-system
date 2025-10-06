@@ -1,68 +1,89 @@
 const express = require('express');
-const { getSQLiteDB } = require('../config/database');
+const jwt = require('jsonwebtoken');
 const router = express.Router();
+const Agent = require('../models/Agent');
+const { transformAgent, transformAgents } = require('../utils/transformers'); // เพิ่ม
 
-// Agent Login
-router.post('/login', (req, res) => {
-  const { agentCode } = req.body;
-  
-  if (!agentCode) {
-    return res.status(400).json({ error: 'Agent code is required' });
-  }
+const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-me';
 
-  const db = getSQLiteDB();
-  const query = `
-    SELECT a.*, t.team_name 
-    FROM agents a 
-    LEFT JOIN teams t ON a.team_id = t.team_id 
-    WHERE a.agent_code = ? AND a.is_active = 1
-  `;
-
-  db.get(query, [agentCode], (err, row) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Database error' });
+/**
+ * POST /api/auth/login
+ * Agent/Supervisor login
+ */
+router.post('/login', async (req, res) => {
+  try {
+    const { agentCode, supervisorCode } = req.body;
+    
+    // Determine login type
+    const code = (agentCode || supervisorCode || '').toUpperCase();
+    
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        error: 'Agent code or Supervisor code is required'
+      });
     }
-
-    if (!row) {
-      return res.status(401).json({ error: 'Invalid agent code' });
+    
+    // Find user
+    const user = await Agent.findByCode(code);
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid credentials'
+      });
     }
-
-    // Return agent info (no password needed)
+    
+    // For supervisors, get team members
+    let teamData = null;
+    let rawTeamData = null; // ประกาศตรงนี้
+    
+    if (user.role === 'supervisor') {
+      rawTeamData = await Agent.findByTeam(user.team_id);
+      console.log('Raw team data from DB:', rawTeamData);
+      
+      teamData = transformAgents(rawTeamData);
+      console.log('Transformed team data:', teamData);
+    }
+    
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        agentCode: user.agent_code,
+        role: user.role,
+        teamId: user.team_id
+      },
+      JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+    
+    // Response
     res.json({
       success: true,
-      agent: {
-        agentCode: row.agent_code,
-        agentName: row.agent_name,
-        teamId: row.team_id,
-        teamName: row.team_name,
-        role: row.role
+      data: {
+        user: transformAgent(user),
+        teamData: teamData,
+        token: token
       }
     });
-  });
+    
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
 });
 
-// Agent Logout
+/**
+ * POST /api/auth/logout
+ * User logout
+ */
 router.post('/logout', (req, res) => {
-  const { agentCode } = req.body;
-  
-  // Here you could update last_logout_time or handle session cleanup
-  res.json({ success: true, message: 'Logged out successfully' });
-});
-
-// Validate Agent (for middleware)
-router.get('/validate/:agentCode', (req, res) => {
-  const { agentCode } = req.params;
-  
-  const db = getSQLiteDB();
-  const query = 'SELECT agent_code, agent_name, role FROM agents WHERE agent_code = ? AND is_active = 1';
-
-  db.get(query, [agentCode], (err, row) => {
-    if (err || !row) {
-      return res.status(401).json({ valid: false });
-    }
-
-    res.json({ valid: true, agent: row });
+  res.json({
+    success: true,
+    message: 'Logged out successfully'
   });
 });
 

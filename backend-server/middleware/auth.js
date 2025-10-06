@@ -1,8 +1,10 @@
 const jwt = require('jsonwebtoken');
 
-const authMiddleware = (req, res, next) => {
+const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-me';
+
+function authMiddleware(req, res, next) {
   try {
-    // Get token from Authorization header
+    // Get token from header
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -12,14 +14,14 @@ const authMiddleware = (req, res, next) => {
       });
     }
     
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const token = authHeader.substring(7); // Remove 'Bearer '
     
-    // Verify and decode token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'default-secret');
+    // Verify token
+    const decoded = jwt.verify(token, JWT_SECRET);
     
-    // Add user info to request object
+    // Add user info to request
     req.user = {
-      userId: decoded.userId,
+      agentCode: decoded.agentCode,
       role: decoded.role,
       teamId: decoded.teamId
     };
@@ -39,6 +41,6 @@ const authMiddleware = (req, res, next) => {
       error: 'Invalid token'
     });
   }
-};
+}
 
 module.exports = authMiddleware;

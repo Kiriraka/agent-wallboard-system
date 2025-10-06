@@ -1,73 +1,149 @@
 const express = require('express');
-const { getSQLiteDB } = require('../config/database');
-const Message = require('../models/Message');
 const router = express.Router();
+const Agent = require('../models/Agent');
+const Status = require('../models/Status');
+const authMiddleware = require('../middleware/auth');
 
-// Get all agents (for supervisor dashboard)
-router.get('/', (req, res) => {
-  const db = getSQLiteDB();
-  const query = `
-    SELECT a.agent_code, a.agent_name, a.team_id, t.team_name, a.role
-    FROM agents a
-    LEFT JOIN teams t ON a.team_id = t.team_id
-    WHERE a.is_active = 1
-    ORDER BY a.agent_name
-  `;
+/**
+ * GET /api/agents/team/:teamId
+ * Get all agents in a team (for supervisors)
+ * Get all agents in a team WITH current status
+ */
 
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Database error' });
-    }
-
-    res.json({ agents: rows });
-  });
+router.get('/team/:teamId', authMiddleware, async (req, res) => {
+  try {
+    const { teamId } = req.params;
+    
+    // 1. ดึงข้อมูล agents จาก SQLite
+    const agents = await Agent.findByTeam(parseInt(teamId));
+    
+    // 2. ✅ ดึง current status ล่าสุดของแต่ละ agent จาก MongoDB
+    const agentsWithStatus = await Promise.all(
+      agents.map(async (agent) => {
+        // หา status ล่าสุด
+        const latestStatus = await Status.findOne({
+          agentCode: agent.agent_code
+        })
+        .sort({ timestamp: -1 })
+        .limit(1)
+        .lean();
+        
+        return {
+          agent_code: agent.agent_code,
+          agent_name: agent.agent_name,
+          role: agent.role,
+          email: agent.email,
+          phone: agent.phone,
+          team_id: parseInt(teamId),
+          // ✅ เพิ่ม current status
+          currentStatus: latestStatus?.status || 'Offline',
+          lastUpdate: latestStatus?.timestamp || new Date()
+        };
+      })
+    );
+    
+    console.log('Team agents with status:', agentsWithStatus);
+    
+    res.json({
+      success: true,
+      teamId: parseInt(teamId),
+      agents: agentsWithStatus,
+      count: agentsWithStatus.length
+    });
+    
+  } catch (error) {
+    console.error('Get team agents error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get team agents'
+    });
+  }
 });
 
-// Get agents by team (for team-specific views)
-router.get('/team/:teamId', (req, res) => {
-  const { teamId } = req.params;
-  const db = getSQLiteDB();
-  
-  const query = `
-    SELECT agent_code, agent_name, role
-    FROM agents 
-    WHERE team_id = ? AND is_active = 1
-    ORDER BY agent_name
-  `;
-
-  db.all(query, [teamId], (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
+/**
+ * PUT /api/agents/:agentCode/status
+ * Update agent status
+ */
+router.put('/:agentCode/status', authMiddleware, async (req, res) => {
+  try {
+    const { agentCode } = req.params;
+    const { status } = req.body;
+    
+    // Validate status
+    const validStatuses = ['Available', 'Busy', 'Break', 'Offline'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+      });
     }
-
-    res.json({ agents: rows });
-  });
+    
+    // Verify agent exists
+    const agent = await Agent.findByCode(agentCode.toUpperCase());
+    if (!agent) {
+      return res.status(404).json({
+        success: false,
+        error: 'Agent not found'
+      });
+    }
+    
+    // Save status to MongoDB
+    const statusUpdate = await Status.create({
+      agentCode: agentCode.toUpperCase(),
+      status: status,
+      timestamp: new Date(),
+      teamId: agent.team_id
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        agentCode: agentCode.toUpperCase(),
+        status: status,
+        timestamp: statusUpdate.timestamp,
+        teamId: agent.team_id
+      }
+    });
+    
+  } catch (error) {
+    console.error('Update status error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update status'
+    });
+  }
 });
 
-// Get agent details
-router.get('/:agentCode', (req, res) => {
-  const { agentCode } = req.params;
-  const db = getSQLiteDB();
-  
-  const query = `
-    SELECT a.*, t.team_name 
-    FROM agents a 
-    LEFT JOIN teams t ON a.team_id = t.team_id 
-    WHERE a.agent_code = ?
-  `;
-
-  db.get(query, [agentCode], (err, row) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-
-    if (!row) {
-      return res.status(404).json({ error: 'Agent not found' });
-    }
-
-    res.json({ agent: row });
-  });
+/**
+ * GET /api/agents/:agentCode/history
+ * Get agent status history
+ */
+router.get('/:agentCode/history', authMiddleware, async (req, res) => {
+  try {
+    const { agentCode } = req.params;
+    const { limit = 50 } = req.query;
+    
+    const history = await Status.find({
+      agentCode: agentCode.toUpperCase()
+    })
+    .sort({ timestamp: -1 })
+    .limit(parseInt(limit))
+    .lean();
+    
+    res.json({
+      success: true,
+      agentCode: agentCode.toUpperCase(),
+      history: history,
+      count: history.length
+    });
+    
+  } catch (error) {
+    console.error('Get history error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get agent history'
+    });
+  }
 });
 
 module.exports = router;
