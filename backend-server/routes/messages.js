@@ -5,25 +5,30 @@ const router = express.Router();
 // Send message
 router.post('/send', async (req, res) => {
   try {
-    const { fromCode, toCode, message, type = 'direct' } = req.body;
+    // ดึงค่าจาก body ทั้ง message และ content เพื่อรองรับทั้งสองแบบ
+    const { fromCode, toCode, message, content, type = 'direct', priority = 'normal' } = req.body;
 
-    if (!fromCode || !message) {
+    // ✅ ใช้ message ถ้ามี / ถ้าไม่มีให้ใช้ content
+    const text = message || content;
+
+    if (!fromCode || !text) {
       return res.status(400).json({ error: 'From code and message are required' });
     }
 
-    // Create new message
+    // ✅ ใช้ field content ให้ตรงกับ schema
     const newMessage = new Message({
       fromCode,
       toCode: type === 'broadcast' ? null : toCode,
-      message,
+      content: text,
       type,
+      priority,
       timestamp: new Date(),
       isRead: false
     });
 
     await newMessage.save();
 
-    // Emit real-time event (handled by socket)
+    // ✅ ส่ง event ผ่าน socket.io
     const io = req.app.get('io');
     if (io) {
       if (type === 'broadcast') {
@@ -41,7 +46,7 @@ router.post('/send', async (req, res) => {
 });
 
 // Get messages for agent
-router.get('/inbox/:agentCode', async (req, res) => {
+router.get('/agent/:agentCode', async (req, res) => {
   try {
     const { agentCode } = req.params;
     const limit = parseInt(req.query.limit) || 50;
@@ -52,8 +57,8 @@ router.get('/inbox/:agentCode', async (req, res) => {
         { type: 'broadcast' }
       ]
     })
-    .sort({ timestamp: -1 })
-    .limit(limit);
+      .sort({ timestamp: -1 })
+      .limit(limit);
 
     res.json({ messages });
   } catch (error) {
@@ -66,8 +71,8 @@ router.get('/inbox/:agentCode', async (req, res) => {
 router.put('/:messageId/read', async (req, res) => {
   try {
     const { messageId } = req.params;
-    
-    await Message.findByIdAndUpdate(messageId, { 
+
+    await Message.findByIdAndUpdate(messageId, {
       isRead: true,
       readAt: new Date()
     });
